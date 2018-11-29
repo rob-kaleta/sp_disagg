@@ -1,9 +1,9 @@
 # When supplied with a folder containing rasters, a bounding area (country/district etc.), resolution and CRS
-# this function will create an empty raster,load all rasters folder, reproject, crop and stack them. 
-process_rasters<-function(raster_folder,area,resolution,crs){
-  # start check
-  defined<-ls(sorted=FALSE)
-  passed<-names(as.list(match.call())[-1])
+# this function will create an empty raster, load all rasters in folder, reproject, crop and stack. 
+process_rasters <- function(raster_folder,area,resolution,crs){
+  # Start argument check
+  defined <- ls(sorted=FALSE)
+  passed <- names(as.list(match.call())[-1])
   if (any(!defined %in% passed)) {
     stop(paste("missinge values for",paste(setdiff(defined,passed),collapse=",")))
   }
@@ -13,26 +13,26 @@ process_rasters<-function(raster_folder,area,resolution,crs){
   if (is.numeric(crs)==FALSE){
     stop(paste("Error crs must be numeric"))
   }
-  # end check
-  rasters_list<-list.files(raster_folder,recursive = TRUE, pattern="*.tif$",ignore.case = TRUE,full.names=TRUE)
+  # End argument check
+  rasters_list <- list.files(raster_folder,recursive = TRUE, pattern="*.tif$",ignore.case = TRUE,full.names=TRUE)
   #print(rasters_list)
-  rast_out<-lapply(rasters_list,function(raster_in){
-    rast<-raster(raster_in)
+  rast_out <- lapply(rasters_list,function(raster_in){
+    rast <- raster(raster_in)
     print(rast)
-  # if TRUE then raster is categorical and interp is set to nearest neighbour else raster is cotinuous and interp set to bilinear  
+  # If TRUE then raster is categorical and interp is set to nearest neighbour else raster is continuous and interp set to bilinear  
     if (floor(maxValue(rast))==maxValue(rast)){
-      interp<-"ngb"
+      interp <- "ngb"
     } else{
-      interp<-"bilinear"
+      interp <- "bilinear"
     }
-        # main body of function
-        empty_raster<-raster(area,res=resolution,crs=crs)
+        # Main body of function
+        empty_raster <- raster(area,res=resolution,crs=crs)
         projectRaster(rast,empty_raster,method=interp)%>%
         crop(as.vector(extent(area)))%>%
         mask(area)
     }
   )
-  final_stack<-do.call(stack,rast_out)
+  final_stack <- do.call(stack,rast_out)
 }
 
 
