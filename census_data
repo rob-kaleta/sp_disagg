@@ -15,7 +15,7 @@ desc<-lapply(desc_l,fread)
 census_codes_lu<-rbindlist(desc)
 
 # Adds column "meas_stat_desc" - a combination of all columns in census_codes_lu - used to identify and describe each census code
-census_codes_lu<-mutate(census_codes_lu,meas_stat_desc=paste(ColumnVariableCode,ColumnVariableMeasurementUnit,ColumnVariableStatisticalUnit,ColumnVariableDescription,sep="-"))
+census_codes_lu<-mutate(census_codes_lu,meas_stat_desc=paste(ColumnVariableMeasurementUnit,ColumnVariableStatisticalUnit,ColumnVariableDescription,sep="-"))
 census_codes_lu$meas_stat_desc<-gsub(" ","_",census_codes_lu$meas_stat_desc)
 census_codes_lu$meas_stat_desc<-gsub(":_",":",census_codes_lu$meas_stat_desc)
 rm(desc,desc_l)
