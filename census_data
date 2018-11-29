@@ -2,80 +2,81 @@
 ####### Census data is joined with spatial data
 ####### Column names are changed to be more descriptive on the basis of lookups
 ####### OA level census data is then rasterised and put into a raster stack  
+####### Uses Isle of Wight as an example to check results
 
 # Download relevant census data from https://www.nomisweb.co.uk/, unzip and put into NDUnzip folder
 
 ####### Create various lookups to use later 
 # Download file from http://geoportal.statistics.gov.uk/
-OA_to_LA_lu<-fread("lookups/OA_to_LA_lu.csv")
+OA_to_LA_lu <- fread("lookups/OA_to_LA_lu.csv")
 
 # Create a lookup of census questions to rename columns later 
-desc_l<-unique(list.files("census/NDUnzip",recursive = TRUE,pattern="*DESC0.CSV"))
-desc<-lapply(desc_l,fread)
-census_codes_lu<-rbindlist(desc)
+desc_l <- unique(list.files("census/NDUnzip",recursive = TRUE,pattern="*DESC0.CSV"))
+desc <- lapply(desc_l,fread)
+census_codes_lu <- rbindlist(desc)
 
 # Adds column "meas_stat_desc" - a combination of all columns in census_codes_lu - used to identify and describe each census code
-census_codes_lu<-mutate(census_codes_lu,meas_stat_desc=paste(ColumnVariableMeasurementUnit,ColumnVariableStatisticalUnit,ColumnVariableDescription,sep="-"))
-census_codes_lu$meas_stat_desc<-gsub(" ","_",census_codes_lu$meas_stat_desc)
-census_codes_lu$meas_stat_desc<-gsub(":_",":",census_codes_lu$meas_stat_desc)
+census_codes_lu <- mutate(census_codes_lu,meas_stat_desc=paste(ColumnVariableMeasurementUnit,ColumnVariableStatisticalUnit,ColumnVariableDescription,sep="-"))
+census_codes_lu$meas_stat_desc <- gsub(" ","_",census_codes_lu$meas_stat_desc)
+census_codes_lu$meas_stat_desc <- gsub(":_",":",census_codes_lu$meas_stat_desc)
 rm(desc,desc_l)
 
+####### Import OA shapefile
+# Read in OA from fgdb  
+FGDB_UK_local <- "D:/1_projects/ONS_data.gdb"
+# List all feature classes in a file geodatabase
+FGDB_List <- ogrListLayers(FGDB_UK_local)
+print(FGDB_List) 
 
+# Upload OAs and only keep IOW ones  
+iow_oa <- st_read(FGDB_UK_local,layer="OA_2011_EW_BGC_V2")%>%
+          filter(OA11CD %in% filter(OA_to_LA_lu,LAD11NM == "Isle of Wight")$OA11CD)
 
+# Dissolve iow OAs to get a boundary for IOW - optional  
+iow_bounds<-iow_oa %>% 
+            group_by(LAD11CD) %>% 
+            summarise() %>% 
+            st_cast()
 
+####### Import and process census data
+# List all DATA csvs from folder
+census_l <- unique(list.files("census/NDUnzip",recursive = TRUE,pattern="*DATA.CSV",full.names = TRUE))
+# Import and merge 
+census <- lapply(census_l,fread)
+census <- Reduce(merge,census)
+#fwrite(census,"census_merged.csv")
 
-####### This script imports census CSVs at OA level and merges them into one data table
-####### Census data is joined with spatial data
-####### Column names are changed to be more descriptive on the basis of census_codes_lu look up 
-####### OA level census data is then rasterised and put into a raster stack  
+# Subset IOW census data only
+iow_oa_census <- filter(census,GeographyCode %in% iow_oa$OA11CD)
 
-# list all DATA csvs from folder
-census_l<-unique(list.files("census/NDUnzip",recursive = TRUE,pattern="*DATA.CSV",full.names = TRUE))
-# import and merge 
-census<-lapply(census_l,fread)
-census<-Reduce(merge,census)
+# Join census information to iow OA geography  
+iow_oa_with_census <- inner_join(iow_oa,iow_oa_census,by=c("OA11CD"="GeographyCode"))
 
-# rename columns from census codes to descriptive values based on census_codes_lu - lookupo
-names(census)<-as.character(census_codes_lu$meas_stat_desc[base::match(names(census),census_codes_lu$ColumnVariableCode)])
-# subset IOW census data only
-iow_oa_census<-filter(census,GeographyCode %in% iow_oa$OA11CD)
+# Plot census results per OA - census_codes_lu must be loaded
+# Census should be a string representing census question code
+plot_census <- function(data,census){
+    ggplot() +
+    geom_sf(data=data,aes(fill=st_set_geometry(data,NULL)[,census])) +
+    labs(title=census,
+         subtitle=census_codes_lu$meas_stat_desc[match(census,census_codes_lu$ColumnVariableCode)])+
+    scale_fill_continuous(name=census_codes_lu$ColumnVariableMeasurementUnit[match(census,census_codes_lu$ColumnVariableCode)])+
+    theme(axis.text = element_blank(),
+          axis.ticks=element_blank())
+    }
+# Plot example
+plot_census(iow_oa_with_census,"CT00100001")
 
-####  join census information to iow OA geography #### 
-iow_oa_with_census<-inner_join(iow_oa,iow_oa_census,by=c("OA11CD"="GeographyCode"))
-
-#### plots - quick and dirty #### 
-plot_vars<-function(variable){
-  var_plot<-names(iow_oa_with_census)[variable]
-  choroLayer(iow_oa_with_census,
-             var = var_plot, 
-             method = "quantile", 
-             legend.title.txt = "")
-  layoutLayer(
-    title = var_plot
-  )
-}
-# plot variable - select by column number
-plot_vars(10)
-
-
-#### rasterizing census data ####
-# create empty raster equal to IOW bounds 5k buffer, resolution of 100m
-r<-raster(iow_bounds,res=100,crs=27700)
-# list of columns / variables to be rasterised
-rast_l<-as.list(colnames(iow_oa_with_census)[5:2107])
-# rasterise and stack
-Sys.time()
-start<-Sys.time()
-iow_stack<- do.call(stack,
-                    lapply(rast_l,function(val){
-                      fasterize(iow_oa_with_census,raster=r,field=val)
+####### Rasterizing census data - not likely to be used in the long term
+# Create empty raster equal to boundary of area with a cell resolution of 100m
+r <- raster(iow_oa,res=100,crs=27700)
+# List of columns / variables to be rasterised minus geography vars
+rast_l <- as.list(colnames(iow_oa_with_census)[5:2107])
+# Rasterise and stack
+census_stack <- do.call(stack,
+                     lapply(rast_l,function(val){
+                     fasterize(iow_oa_with_census,raster=r,field=val)
                     }
                     )
 )
-end<-Sys.time()-start
-print(end)
 # assign names to raster layers
-names(iow_stack)<-rast_l
-# quick plot of raster 
-plot(iow_stack[[50:55]],main=names(iow_stack)[50:55],cex.main=0.8,cex.axis=0.7,cex.lab=0.7,las=1,col=pal)
-
+names(census_stack) <- rast_l
