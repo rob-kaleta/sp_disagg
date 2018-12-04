@@ -7,11 +7,8 @@ process_rasters <- function(raster_folder,area,resolution,crs){
   if (any(!defined %in% passed)) {
     stop(paste("missinge values for",paste(setdiff(defined,passed),collapse=",")))
   }
-  if (is.numeric(resolution)==FALSE){
-    stop(paste("Error resolution must be numeric"))
-  }
-  if (is.numeric(crs)==FALSE){
-    stop(paste("Error crs must be numeric"))
+  if (is.numeric(resolution) == FALSE | is.numeric(crs) == FALSE){
+    stop(paste("Error: Resolution and crs must be numeric"))
   }
   # End argument check
   rasters_list <- list.files(raster_folder,recursive = TRUE, pattern="*.tif$",ignore.case = TRUE,full.names=TRUE)
