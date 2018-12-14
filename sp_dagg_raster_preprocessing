@@ -1,0 +1,77 @@
+#### Pre-processing of raster data - cleaning up, reclassifying etc.
+# if any newly added rasters need work add them here 
+# Done before any bulk processes begin to create rasters that will be passed on to functions
+
+# This uses the process_rasters function to reproject and crop all rasters in "raster_folder" to an area defined by "area" and save them to "output_folder"
+start<-Sys.time()
+stack_r<-process_rasters(raster_folder = "1_rasters/1_RAW/1_UK_GB", output_folder = out_folder )
+end2<-difftime(Sys.time(),start)
+
+
+#### Upload and reclassify LCM raster to composite groups - see LCM readme for exact groupings ####
+#r_land_classes_100 <- raster("rasters/LCM/lcm_2015_100m_2.tif")
+#r_land_classes_100[r_land_classes_100==128] <- NA
+# m <- c(0,1,1, 1,2,2, 2,3,3, 3,4,4, 4,8,5, 8,12,6, 12,13,7, 13,14,8, 14,19,9, 19,21,10)
+#lcm_classes<-c("Broadleaf_Woodland","Coniferous_Woodland","Arable","Improved_Grassland","Semi_natural_Grassland","Mountain_heath_bog","Saltwater","Freshwater","Coastal","Built_up")
+# reclass_matrix <- matrix(m,ncol=3,byrow=TRUE)
+# lcm_agg <- ratify(reclassify(lcm,reclass_matrix))
+# rat<-levels(lcm_agg)[[1]]
+# rat$agg_class<-lcm_classes
+# levels(lcm_agg)<-rat
+# rat
+#export aggregated lcm
+#writeRaster(lcm_agg,"1_GB_LCM_AGG_2015_100m.grd")
+lcm_agg <- ratify(raster(list.files(out_folder, full.names = TRUE, pattern = glob2rx("*lcm*.grd"))))
+rat <- data.frame(ID = seq(minValue(lcm_agg),maxValue(lcm_agg)),classes = (lcm_classes))
+levels(lcm_agg) <- rat
+
+
+# Takes lcm_agg, separates each category and calculates distance to it. Each raster is saved in the "out_folder" with a "dist" suffix 
+i<-1
+for (i in minValue(lcm_agg):maxValue(lcm_agg)){
+  lcm2<-lcm_agg
+  lcm2[lcm2!=i]<-NA
+  distance(lcm2) %>% 
+  mask(area) %>% 
+  writeRaster(paste0(out_folder,"/",area_name,"_",levels(lcm2)[[1]][,2][i],"_dist.grd"),overwrite=TRUE)
+  print(paste("Processing",i,"out of",maxValue(lcm_agg)))
+  rm(lcm2)
+  if (i == maxValue(lcm_agg)){
+    i<-1
+  }
+}
+
+
+#### Create slope raster from DEM ####
+r_dem<-raster("rasters/eu_dem_v11_E30N30/eu_dem_v11_E30N30.tif")
+r_slope<-terrain(r_dem,opt="slope",unit="degrees")
+writeRaster(r_slope,"D:/1_projects/SP_DAGG/Data/rasters/slope/slope.tif")
+
+#### Create building density raster ####
+
+buildings_gpk<-"D:/1_projects/SP_DAGG/data/vector/OS/buildings/GB_buildings_with_LA_names.gpkg"
+FGDB_List <- ogrListLayers(buildings_gpk)
+print(FGDB_List) 
+
+build_list<-as.list(list.files("D:/1_projects/SP_DAGG/data/1_vector/OS/buildings/building_centroids",pattern="*.shp",full.names = TRUE))
+build_rasters<-function(x){ 
+  data<-st_read(x) %>% dplyr::select(ID,AreaCode,ALTNAME,Country) %>% st_zm() 
+  nc<-rasterize(st_coordinates(data),r,fun="count",background=0)
+  #writeRaster(nc,paste0("D:/1_projects/SP_DAGG/data/vector/OS/buildings/building_density/""WALES_buildings_count.tif"),overwrite=TRUE)
+}
+
+output<-lapply(build_list,build_rasters)
+
+rast_list<-as.list(list.files("D:/1_projects/SP_DAGG/data/1_rasters/building_density/areas",pattern="*.tif$",full.names = TRUE))
+
+area_rasts <- stack(lapply(rast_list,raster))
+
+rast1<-raster("D:/1_projects/SP_DAGG/data/vector/OS/buildings/building_density/WALES_buildings_count.tif")
+rast2<-raster("D:/1_projects/SP_DAGG/data/vector/OS/buildings/building_density/N_buildings_count.tif")
+rast3<-raster("D:/1_projects/SP_DAGG/data/vector/OS/buildings/building_density/SW_buildings_count.tif")
+rast4<-raster("D:/1_projects/SP_DAGG/data/vector/OS/buildings/building_density/SE_buildings_count.tif")
+rast5<-raster("D:/1_projects/SP_DAGG/data/1_rasters/building_density/MID_buildings_count.tif")
+
+rast<-rast1+rast2+rast3+rast4+rast5
+writeRaster(rast,"D:/1_projects/SP_DAGG/data/vector/OS/buildings/building_density/eng_wal_100m_build_density.tif")
+
