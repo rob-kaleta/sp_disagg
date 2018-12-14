@@ -1,6 +1,6 @@
 # When supplied with a folder containing rasters, a bounding area (country/district etc.), resolution and CRS
 # this function will create an empty raster,load all rasters folder, reproject, crop and stack them. 
-process_rasters<-function(raster_folder, out_folder, study_area = area){
+process_rasters <- function(raster_folder, output_folder, study_area = area){
   # start check
   # defined<-ls(sorted=FALSE)
   # passed<-names(as.list(match.call())[-1])
